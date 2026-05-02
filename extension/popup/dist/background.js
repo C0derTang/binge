@@ -34,35 +34,66 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 const API_URL = 'http://localhost:3000';
 
+// Analyze with MiniMax AI
 async function analyzeContent(data) {
+  const caption = data.captions?.[0] || '';
+  const hashtags = data.hashtags || [];
+
+  console.log('\n=== INTEREST ANALYSIS ===');
+  console.log('Caption:', caption.slice(0, 80));
+  console.log('Hashtags:', hashtags.join(', '));
+  console.log('========================\n');
+
+  // Try MiniMax AI first
+  try {
+    const resp = await fetch(`${API_URL}/analyze?caption=${encodeURIComponent(caption)}`);
+    if (resp.ok) {
+      const result = await resp.json();
+      console.log('[Binge Background] AI result:', JSON.stringify(result));
+
+      const stored = await chrome.storage.local.get(['user']);
+      if (stored.user) {
+        await fetch(`${API_URL}/users/profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: stored.user.userId,
+            interests: result.interests || [],
+            humorType: result.humorType || 'chill'
+          })
+        });
+
+        stored.user.interests = result.interests || [];
+        stored.user.humorType = result.humorType || 'chill';
+        await chrome.storage.local.set({ user: stored.user });
+      }
+
+      sendMessage({ type: 'SCRAPING_COMPLETE', interests: result.interests || [], humorType: result.humorType || 'chill' });
+      return;
+    }
+  } catch (err) {
+    console.error('[Binge Background] AI failed, falling back to keyword:', err.message);
+  }
+
+  // Fallback to keyword matching
   const interests = extractInterests(data.captions, data.hashtags);
   const humorType = analyzeHumor(data.captions);
 
-  console.log('\n=== INTEREST ANALYSIS ===');
-  console.log('Caption:', data.captions?.[0]?.slice(0, 80));
-  console.log('Hashtags:', data.hashtags?.join(', '));
-  console.log('Extracted interests:', interests);
-  console.log('Humor type:', humorType);
-  console.log('========================\n');
-
   const stored = await chrome.storage.local.get(['user']);
   if (stored.user) {
-    try {
-      await fetch(`${API_URL}/users/profile`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: stored.user.userId,
-          interests,
-          humorType
-        })
-      });
-      stored.user.interests = interests;
-      stored.user.humorType = humorType;
-      await chrome.storage.local.set({ user: stored.user });
-    } catch (err) {
-      console.error('[Binge Background] API error:', err.message);
-    }
+    await fetch(`${API_URL}/users/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: stored.user.userId,
+        interests,
+        humorType
+      })
+    });
+
+    stored.user.interests = interests;
+    stored.user.humorType = humorType;
+    await chrome.storage.local.set({ user: stored.user });
   }
 
   sendMessage({ type: 'SCRAPING_COMPLETE', interests, humorType });
