@@ -1,0 +1,19 @@
+{
+  "name": "binge-server",
+  "version": "1.0.0",
+  "description": "Binge dating app backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
+    "axios": "^1.15.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.18.2",
+    "uuid": "^9.0.0"
+  }
+}
