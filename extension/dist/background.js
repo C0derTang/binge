@@ -61,15 +61,42 @@ async function scrapeShortcode(shortcode) {
     }
 
     const reel = parseAPIResponse(json);
-    analyzeContent({
-      captions: reel.caption ? [reel.caption] : [],
-      hashtags: reel.hashtags || [],
-      engagement: 1,
-      totalReels: 1,
-      rawData: [reel]
-    });
+    storeReel(reel);
   } catch (err) {
     console.error('[Binge Background] Failed to fetch reel data:', err.message);
+    sendMessage({ type: 'SCRAPING_COMPLETE', interests: [], humorType: 'chill' });
+  }
+}
+
+async function storeReel(reel) {
+  const stored = await chrome.storage.local.get(['user']);
+  if (!stored.user) {
+    console.log('[Binge Background] No user logged in, skipping store');
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${API_URL}/users/${stored.user.userId}/reels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shortcode: reel.code,
+        caption: reel.caption,
+        hashtags: reel.hashtags,
+        username: reel.username
+      })
+    });
+
+    const data = await resp.json();
+    if (data.success) {
+      console.log('[Binge Background] Reel stored:', reel.code);
+      sendMessage({ type: 'SCRAPING_COMPLETE', interests: reel.hashtags, humorType: 'chill' });
+    } else {
+      console.log('[Binge Background] Store failed:', data.error);
+      sendMessage({ type: 'SCRAPING_COMPLETE', interests: [], humorType: 'chill' });
+    }
+  } catch (err) {
+    console.error('[Binge Background] Failed to store reel:', err.message);
     sendMessage({ type: 'SCRAPING_COMPLETE', interests: [], humorType: 'chill' });
   }
 }

@@ -1,15 +1,44 @@
 # Binge
 
-Binge is a Chrome extension plus a small Node/Express backend. It watches the Instagram Reel you are viewing, extracts caption-based interests and humor style, stores that profile in Supabase, and shows possible matches inside the extension UI.
+Binge is a Chrome extension dating app that matches you based on the Instagram Reels you watch.
 
-## What I fixed
+## How It Works
 
-- Reel scraping now recognizes both `/reel/...` and `/reels/...` URLs.
-- The extension now requests access to the local backend at `http://localhost:3000/*`.
-- Reel metadata fetching now runs in the background service worker instead of the Instagram page context, which is a safer extension flow.
-- The dashboard now keeps its own reactive profile state, so scraped interests, humor updates, profile pictures, and refreshed matches actually show up in the UI.
-- The extension build now produces a loadable `extension/dist` package with `manifest.json`, `background.js`, and `content.js` copied into it.
-- The server now fails fast when required Supabase env vars are missing, and `/scrape` returns a clear error if `SCRAPE_CREATORS_KEY` is not set.
+1. **Watch Reels on Instagram** - The extension silently scrapes each Reel you view
+2. **Interests Accumulate** - Your watched Reels are stored in `watched_reels` table with hashtags
+3. **Matching** - Users with overlapping interest histories are matched using cosine similarity
+
+## Tech Stack
+
+- **Chrome Extension** (MV3) - Content script scrapes Reels, background handles API calls
+- **React + Tailwind** - Extension popup UI
+- **Express.js** - Backend server
+- **Supabase** - User database and watched_reels storage
+- **scrapecreators API** - Instagram Reel data (caption, hashtags, engagement)
+- **MiniMax AI** (optional) - Interest extraction fallback
+
+## Project Structure
+
+```
+binge/
+├── extension/
+│   ├── dist/              # Built extension (load this in Chrome)
+│   ├── src/               # React source
+│   ├── background.js      # Service worker
+│   ├── content.js         # Content script (runs on Instagram)
+│   └── manifest.json
+├── server/
+│   ├── index.js           # Express server
+│   ├── supabase.js        # Supabase client
+│   ├── routes/
+│   │   ├── auth.js        # Login/register
+│   │   └── users.js       # Profile, matches, watched_reels
+│   ├── services/
+│   │   └── matching.js    # Cosine similarity scoring
+│   └── scripts/
+│       └── log-scores.js  # Debug script to monitor scores
+└── server/.env            # API keys (never commit)
+```
 
 ## Prerequisites
 
@@ -19,75 +48,103 @@ Binge is a Chrome extension plus a small Node/Express backend. It watches the In
 - A ScrapeCreators API key
 - Optional: a MiniMax API key for AI-based interest analysis
 
-## Local setup
+## Setup
 
-### 1. Configure the backend
+### 1. Supabase Database
 
-From [server/.env.example](C:/Users/tangc/OneDrive/Desktop/binge/server/.env.example), create `server/.env` and fill in the values:
+Create these tables in your Supabase SQL Editor:
 
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SCRAPE_CREATORS_KEY`
-- `MINIMAX_API_KEY` (optional)
-- `PORT` defaults to `3000`
+```sql
+-- Users table
+CREATE TABLE users (
+  user_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  interests TEXT[],
+  humor_type TEXT,
+  profile_picture TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-### 2. Create the Supabase table
+-- Watched Reels table (accumulates over time)
+CREATE TABLE watched_reels (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  shortcode TEXT NOT NULL,
+  caption TEXT,
+  hashtags TEXT[],
+  username TEXT,
+  watched_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-Run the SQL in [server/supabase-setup.sql](C:/Users/tangc/OneDrive/Desktop/binge/server/supabase-setup.sql) in the Supabase SQL editor.
+CREATE INDEX idx_watched_reels_user_id ON watched_reels(user_id);
+CREATE INDEX idx_watched_reels_shortcode ON watched_reels(shortcode);
+```
+
+### 2. Configure backend
+
+Create `server/.env`:
+```env
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_anon_key
+SCRAPE_CREATORS_KEY=your_api_key
+MINIMAX_KEY=your_minimax_key
+PORT=3000
+```
 
 ### 3. Install dependencies
 
-Backend:
-
-```powershell
-cd C:\Users\tangc\OneDrive\Desktop\binge\server
-npm install
+```bash
+cd server && npm install
+cd extension && npm install
 ```
 
-Extension:
+### 4. Start backend
 
-```powershell
-cd C:\Users\tangc\OneDrive\Desktop\binge\extension
-npm install
+```bash
+cd server && node index.js
 ```
 
-### 4. Start the backend
+### 5. Build extension
 
-```powershell
-cd C:\Users\tangc\OneDrive\Desktop\binge\server
-npm start
+```bash
+cd extension && npm run build
 ```
 
-The API should be available at `http://localhost:3000`.
+Then load `extension/dist/` in Chrome at `chrome://extensions` (Developer mode → Load unpacked).
 
-### 5. Build the extension
+## API Endpoints
 
-```powershell
-cd C:\Users\tangc\OneDrive\Desktop\binge\extension
-npm run build
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/register` | Register new user |
+| POST | `/auth/login` | Login |
+| GET | `/users/:userId` | Get user profile |
+| PUT | `/users/profile` | Update profile |
+| GET | `/users/:userId/matches` | Get matches (aggregated from watched_reels) |
+| POST | `/users/:userId/reels` | Add a watched reel |
+| GET | `/users/:userId/reels` | Get all watched reels |
+| GET | `/users/:userId/interests` | Get aggregated interest scores |
+| GET | `/scrape?shortcode=` | Proxy to scrapecreators API |
+| GET | `/analyze?caption=` | Analyze caption with MiniMax AI |
 
-This produces the loadable unpacked extension folder at `C:\Users\tangc\OneDrive\Desktop\binge\extension\dist`.
+## Matching Algorithm
 
-### 6. Load the extension in Chrome
+1. **Interest Aggregation**: Each watched Reel contributes its hashtags to a frequency map
+   - e.g., 5 Reels with #food → `food: 5`
+2. **Cosine Similarity**: Compare interest score vectors between two users
+   - Score = (A · B) / (|A| × |B|) × 100
+3. **Threshold**: Users need ≥70% compatibility to match
 
-1. Open `chrome://extensions`
-2. Enable `Developer mode`
-3. Click `Load unpacked`
-4. Select `C:\Users\tangc\OneDrive\Desktop\binge\extension\dist`
+## Debugging
 
-## How to use locally
+Run `node server/scripts/log-scores.js` to see compatibility scores between all users update every 5 seconds.
 
-1. Make sure the backend is running on `http://localhost:3000`
-2. Open Instagram in Chrome
-3. Visit a Reel page such as `https://www.instagram.com/reel/...`
-4. Open the Binge extension popup
-5. Register or log in
-6. Keep browsing reels; the extension will scrape the current reel and update your stored interests and humor profile
-7. Reopen the popup to see updated profile data and matches
+## Architecture Notes
 
-## Notes
-
-- Without `SCRAPE_CREATORS_KEY`, reel scraping will not work.
-- Without `MINIMAX_API_KEY`, the app falls back to keyword-based classification.
-- The correct folder to load in Chrome is `extension/dist`, not the raw `extension` source folder.
+- Extension opens as a popup - click icon to open UI
+- Content script detects Reel URLs and extracts shortcode
+- Background fetches reel data and stores to watched_reels via API
+- Matching is calculated on-the-fly from accumulated watched_reels history
+- Dashboard refreshes matches every 5 seconds automatically

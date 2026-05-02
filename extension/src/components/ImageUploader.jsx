@@ -1,9 +1,13 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export default function ImageUploader({ currentPicture, onUpload }) {
   const [preview, setPreview] = useState(currentPicture || null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    setPreview(currentPicture || null);
+  }, [currentPicture]);
 
   function handleFileChange(e) {
     const file = e.target.files[0];

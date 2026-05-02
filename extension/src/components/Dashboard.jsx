@@ -13,7 +13,19 @@ export default function Dashboard({ user, onLogout, API_URL }) {
     loadData();
     // Listen for scraping complete
     chrome.runtime.onMessage.addListener(handleMessage);
-    return () => chrome.runtime.onMessage.removeListener(handleMessage);
+
+    // Refresh matches every 5 seconds
+    const interval = setInterval(() => {
+      if (profile.userId) {
+        loadMatches(profile.userId);
+        loadInterestScores();
+      }
+    }, 5000);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
@@ -28,7 +40,9 @@ export default function Dashboard({ user, onLogout, API_URL }) {
     } else if (msg.type === 'SCRAPING_COMPLETE') {
       setStatus({ text: 'Extension active', state: 'active' });
       addLog(`Found: ${msg.interests?.join(', ') || 'no new interests'}`);
-      updateUser(msg.interests, msg.humorType);
+      // Reload interest scores and matches after new reel stored
+      loadInterestScores();
+      loadMatches(profile.userId);
     }
   }
 
@@ -68,25 +82,36 @@ export default function Dashboard({ user, onLogout, API_URL }) {
   }
 
   async function handlePictureUpload(base64) {
+    // Optimistic update
     setProfile((prev) => ({ ...prev, profilePicture: base64 }));
-    await updateUser(profile.interests, profile.humorType, base64);
+    try {
+      const res = await fetch(`${API_URL}/users/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: profile.userId,
+          interests: profile.interests,
+          humorType: profile.humorType,
+          profilePicture: base64
+        })
+      });
+      const data = await res.json();
+      console.log('[Dashboard] Upload response:', JSON.stringify(data).slice(0, 200));
+      if (data.user || data.success) {
+        setProfile((prev) => ({ ...prev, profilePicture: base64 }));
+        await chrome.storage.local.set({ user: { ...profile, profilePicture: base64 } });
+      }
+    } catch (err) {
+      console.error('[Dashboard] Upload failed:', err.message);
+      // Keep optimistic update on failure
+    }
   }
 
   async function loadData() {
     try {
-      // Load user profile
-      const profileRes = await fetch(`${API_URL}/users/${profile.userId}`);
-      const profileData = await profileRes.json();
-      const nextProfile = {
-        ...profile,
-        profilePicture: profileData.profilePicture || null,
-        interests: profileData.interests || [],
-        humorType: profileData.humorType || null
-      };
-
-      setProfile(nextProfile);
-      await chrome.storage.local.set({ user: nextProfile });
-      await loadMatches(nextProfile.userId);
+      // Load interest scores from aggregated watched_reels
+      await loadInterestScores();
+      await loadMatches(profile.userId);
     } catch (err) {
       console.error('Failed to load data:', err);
     }
@@ -95,7 +120,23 @@ export default function Dashboard({ user, onLogout, API_URL }) {
   async function loadMatches(userId) {
     const res = await fetch(`${API_URL}/users/${userId}/matches`);
     const data = await res.json();
+    console.log('[Dashboard] Matches loaded:', data.matches?.length || 0);
     if (data.matches) setMatches(data.matches);
+  }
+
+  async function loadInterestScores() {
+    try {
+      const res = await fetch(`${API_URL}/users/${profile.userId}/interests`);
+      const data = await res.json();
+      if (data.interestScores) {
+        const scores = data.interestScores;
+        const interests = Object.keys(scores).sort((a, b) => scores[b] - scores[a]);
+        setProfile(prev => ({ ...prev, interests }));
+        await chrome.storage.local.set({ user: { ...profile, interests } });
+      }
+    } catch (err) {
+      console.error('Failed to load interest scores:', err);
+    }
   }
 
   return (

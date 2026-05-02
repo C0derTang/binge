@@ -95,19 +95,122 @@ router.get('/:userId/matches', async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  // Get all watched reels for current user
+  const { data: myReels } = await supabase
+    .from('watched_reels')
+    .select('hashtags')
+    .eq('user_id', req.params.userId);
+
+  // Get all other users and their reels
   const { data: allUsers } = await supabase.from('users').select('*');
-  const matches = matchingService.getMatches(currentUser, allUsers);
+  const myInterests = aggregateInterests(myReels || []);
+  const currentUserWithAggregated = { ...currentUser, interestScores: myInterests };
+
+  const matches = matchingService.getMatchesFromAggregated(currentUserWithAggregated, allUsers);
 
   res.json({
     matches: matches.map(m => ({
       userId: m.user_id,
       displayName: m.display_name,
-      interests: m.interests || [],
+      interests: Object.keys(m.interestScores || {}),
       humorType: m.humor_type,
       profilePicture: m.profile_picture,
       compatibilityScore: m.compatibilityScore
     }))
   });
 });
+
+// Add a watched reel
+router.post('/:userId/reels', async (req, res) => {
+  try {
+    const { shortcode, caption, hashtags, username } = req.body;
+    const userId = req.params.userId;
+
+    if (!shortcode) {
+      return res.status(400).json({ error: 'shortcode required' });
+    }
+
+    // Check if already watched (avoid duplicates)
+    const { data: existing } = await supabase
+      .from('watched_reels')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('shortcode', shortcode)
+      .single();
+
+    if (existing) {
+      return res.json({ success: true, message: 'Already watched' });
+    }
+
+    const { data, error } = await supabase
+      .from('watched_reels')
+      .insert({
+        user_id: userId,
+        shortcode,
+        caption,
+        hashtags: hashtags || [],
+        username
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Add reel error:', error);
+      return res.status(500).json({ error: 'Failed to add reel' });
+    }
+
+    res.json({ success: true, reel: data });
+  } catch (err) {
+    console.error('Add reel error:', err);
+    res.status(500).json({ error: 'Failed to add reel' });
+  }
+});
+
+// Get all watched reels for a user
+router.get('/:userId/reels', async (req, res) => {
+  const { data: reels, error } = await supabase
+    .from('watched_reels')
+    .select('*')
+    .eq('user_id', req.params.userId)
+    .order('watched_at', { ascending: false });
+
+  if (error) {
+    return res.status(500).json({ error: 'Failed to get reels' });
+  }
+
+  res.json({ reels });
+});
+
+// Get aggregated interest scores for a user
+router.get('/:userId/interests', async (req, res) => {
+  const { data: reels } = await supabase
+    .from('watched_reels')
+    .select('hashtags')
+    .eq('user_id', req.params.userId);
+
+  const scores = aggregateInterests(reels || []);
+  res.json({ interestScores: scores });
+});
+
+function aggregateInterests(reels) {
+  const scores = {};
+  const interestKeywords = [
+    'food', 'travel', 'fitness', 'fashion', 'music', 'art', 'comedy',
+    'tech', 'gaming', 'sports', 'nature', 'dance', 'beauty', 'cooking',
+    'pets', 'cars', 'movies', 'books', 'memes'
+  ];
+
+  reels.forEach(reel => {
+    const tags = reel.hashtags || [];
+    tags.forEach(tag => {
+      const lower = tag.toLowerCase();
+      if (interestKeywords.includes(lower)) {
+        scores[lower] = (scores[lower] || 0) + 1;
+      }
+    });
+  });
+
+  return scores;
+}
 
 module.exports = router;
