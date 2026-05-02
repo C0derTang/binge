@@ -12,6 +12,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('[Binge Background] Message received:', msg.type);
   if (msg.type === 'START_SCRAPING') {
     scrapeReels();
+  } else if (msg.type === 'SCRAPE_SHORTCODE') {
+    scrapeShortcode(msg.shortcode);
   }
   return true;
 });
@@ -41,6 +43,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 const API_URL = 'http://localhost:3000';
+
+async function scrapeShortcode(shortcode) {
+  if (!shortcode) {
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${API_URL}/scrape?shortcode=${encodeURIComponent(shortcode)}`);
+    if (!resp.ok) {
+      throw new Error(`Scrape request failed with status ${resp.status}`);
+    }
+
+    const json = await resp.json();
+    if (json.error) {
+      throw new Error(json.error);
+    }
+
+    const reel = parseAPIResponse(json);
+    analyzeContent({
+      captions: reel.caption ? [reel.caption] : [],
+      hashtags: reel.hashtags || [],
+      engagement: 1,
+      totalReels: 1,
+      rawData: [reel]
+    });
+  } catch (err) {
+    console.error('[Binge Background] Failed to fetch reel data:', err.message);
+    sendMessage({ type: 'SCRAPING_COMPLETE', interests: [], humorType: 'chill' });
+  }
+}
 
 // Analyze with MiniMax AI
 async function analyzeContent(data) {
@@ -140,4 +172,24 @@ function analyzeHumor(captions) {
 
 function sendMessage(msg) {
   chrome.runtime.sendMessage(msg);
+}
+
+function parseAPIResponse(data) {
+  const media = data?.data?.xdt_shortcode_media || data;
+  const captionText = media?.edge_media_to_caption?.edges?.[0]?.node?.text || '';
+
+  return {
+    code: media.shortcode || '',
+    caption: captionText,
+    hashtags: extractHashtags(captionText),
+    likeCount: media.like_count || 0,
+    viewCount: media.video_view_count || 0,
+    username: media.owner?.username || '',
+    pk: media.id || ''
+  };
+}
+
+function extractHashtags(text) {
+  const matches = text.match(/#\w+/g) || [];
+  return matches.map((hashtag) => hashtag.slice(1).toLowerCase());
 }

@@ -4,7 +4,7 @@ import ProfileCard from './ProfileCard';
 
 export default function Dashboard({ user, onLogout, API_URL }) {
   const [status, setStatus] = useState({ text: 'Extension active', state: 'active' });
-  const [profilePicture, setProfilePicture] = useState(user?.profilePicture || null);
+  const [profile, setProfile] = useState(user);
   const [matches, setMatches] = useState([]);
   const [logs, setLogs] = useState([]);
 
@@ -15,6 +15,10 @@ export default function Dashboard({ user, onLogout, API_URL }) {
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
   }, []);
+
+  useEffect(() => {
+    setProfile(user);
+  }, [user]);
 
   function handleMessage(msg) {
     console.log('[Dashboard] Received message:', msg.type, msg);
@@ -35,25 +39,28 @@ export default function Dashboard({ user, onLogout, API_URL }) {
 
   async function updateUser(newInterests, newHumorType, newProfilePicture) {
     try {
+      const updatedProfile = {
+        ...profile,
+        interests: newInterests || profile.interests,
+        humorType: newHumorType || profile.humorType,
+        profilePicture: newProfilePicture !== undefined ? newProfilePicture : profile.profilePicture
+      };
+
       const res = await fetch(`${API_URL}/users/profile`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.userId,
-          interests: newInterests || user.interests,
-          humorType: newHumorType || user.humorType,
-          profilePicture: newProfilePicture !== undefined ? newProfilePicture : user.profilePicture
+          userId: profile.userId,
+          interests: updatedProfile.interests,
+          humorType: updatedProfile.humorType,
+          profilePicture: updatedProfile.profilePicture
         })
       });
       const data = await res.json();
       if (data.user) {
-        const updatedUser = {
-          ...user,
-          interests: newInterests || user.interests,
-          humorType: newHumorType || user.humorType,
-          profilePicture: newProfilePicture !== undefined ? newProfilePicture : user.profilePicture
-        };
-        await chrome.storage.local.set({ user: updatedUser });
+        setProfile(updatedProfile);
+        await chrome.storage.local.set({ user: updatedProfile });
+        await loadMatches(updatedProfile.userId);
       }
     } catch (err) {
       console.error('Failed to update user:', err);
@@ -61,32 +68,34 @@ export default function Dashboard({ user, onLogout, API_URL }) {
   }
 
   async function handlePictureUpload(base64) {
-    setProfilePicture(base64);
-    await updateUser(user.interests, user.humorType, base64);
+    setProfile((prev) => ({ ...prev, profilePicture: base64 }));
+    await updateUser(profile.interests, profile.humorType, base64);
   }
 
   async function loadData() {
     try {
       // Load user profile
-      const profileRes = await fetch(`${API_URL}/users/${user.userId}`);
+      const profileRes = await fetch(`${API_URL}/users/${profile.userId}`);
       const profileData = await profileRes.json();
-      if (profileData.profilePicture) {
-        setProfilePicture(profileData.profilePicture);
-      }
-      if (profileData.interests) {
-        user.interests = profileData.interests;
-      }
-      if (profileData.humorType) {
-        user.humorType = profileData.humorType;
-      }
+      const nextProfile = {
+        ...profile,
+        profilePicture: profileData.profilePicture || null,
+        interests: profileData.interests || [],
+        humorType: profileData.humorType || null
+      };
 
-      // Load matches
-      const res = await fetch(`${API_URL}/users/${user.userId}/matches`);
-      const data = await res.json();
-      if (data.matches) setMatches(data.matches);
+      setProfile(nextProfile);
+      await chrome.storage.local.set({ user: nextProfile });
+      await loadMatches(nextProfile.userId);
     } catch (err) {
       console.error('Failed to load data:', err);
     }
+  }
+
+  async function loadMatches(userId) {
+    const res = await fetch(`${API_URL}/users/${userId}/matches`);
+    const data = await res.json();
+    if (data.matches) setMatches(data.matches);
   }
 
   return (
@@ -119,20 +128,20 @@ export default function Dashboard({ user, onLogout, API_URL }) {
           <h2 className="text-binge-dim text-sm font-medium mb-3">Your Profile</h2>
           <div className="bg-binge-card rounded-lg p-4">
             <div className="flex items-center gap-4 mb-4">
-              <ImageUploader
-                currentPicture={profilePicture}
+                <ImageUploader
+                currentPicture={profile.profilePicture}
                 onUpload={handlePictureUpload}
               />
               <div>
-                <h3 className="text-white font-semibold text-base">{user.displayName}</h3>
-                {user.humorType && (
-                  <span className="text-binge-accent text-xs capitalize">{user.humorType} humor</span>
+                <h3 className="text-white font-semibold text-base">{profile.displayName}</h3>
+                {profile.humorType && (
+                  <span className="text-binge-accent text-xs capitalize">{profile.humorType} humor</span>
                 )}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {user.interests?.length > 0 ? (
-                user.interests.map((interest) => (
+              {profile.interests?.length > 0 ? (
+                profile.interests.map((interest) => (
                   <span
                     key={interest}
                     className="bg-binge-border px-3 py-1 rounded-full text-xs text-gray-300"

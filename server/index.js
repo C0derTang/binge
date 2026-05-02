@@ -66,6 +66,10 @@ app.get('/scrape', async (req, res) => {
     return res.status(400).json({ error: 'Missing shortcode' });
   }
 
+  if (!process.env.SCRAPE_CREATORS_KEY) {
+    return res.status(500).json({ error: 'Missing SCRAPE_CREATORS_KEY' });
+  }
+
   try {
     const response = await axios.get('https://api.scrapecreators.com/v1/instagram/post', {
       params: {

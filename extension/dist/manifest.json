@@ -4,8 +4,13 @@
   "version": "1.0.0",
   "description": "Dating app that matches you based on Instagram Reels you watch",
   "permissions": ["activeTab", "storage", "tabs"],
-  "host_permissions": ["*://www.instagram.com/*"],
-  "action": {},
+  "host_permissions": [
+    "*://www.instagram.com/*",
+    "http://localhost:3000/*"
+  ],
+  "action": {
+    "default_popup": "index.html"
+  },
   "background": {
     "service_worker": "background.js"
   },
