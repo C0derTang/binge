@@ -1,0 +1,35 @@
+# Claude
+.claude/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# node_modules (all directories)
+node_modules/
+
+# Build output - keep dist tracked
+# extension/popup/dist/ - intentionally tracked for Chrome upload
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temp files
+*.tmp
+*.temp
+.cache/
+
+# Supabase
+.supabase/
