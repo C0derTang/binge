@@ -7,7 +7,9 @@ function calculateCompatibility(user1, user2) {
   if (user1.interests && user2.interests) {
     const overlap = user1.interests.filter(i => user2.interests.includes(i));
     const maxPossible = Math.max(user1.interests.length || 0, user2.interests.length || 0);
-    score += (overlap.length / maxPossible) * 60;
+    if (maxPossible > 0) {
+      score += (overlap.length / maxPossible) * 60;
+    }
   }
 
   // Humor type match (0-40 points)

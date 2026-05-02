@@ -3,11 +3,9 @@
   "name": "Binge",
   "version": "1.0.0",
   "description": "Dating app that matches you based on Instagram Reels you watch",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "tabs"],
   "host_permissions": ["*://www.instagram.com/*"],
-  "action": {
-    "default_popup": "index.html"
-  },
+  "action": {},
   "background": {
     "service_worker": "background.js"
   },

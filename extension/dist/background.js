@@ -1,5 +1,13 @@
 // Background service worker for Binge extension
 
+// Open full page when extension icon is clicked
+chrome.action.onClicked.addListener(async (tab) => {
+  await chrome.tabs.create({
+    url: chrome.runtime.getURL('index.html'),
+    active: true
+  });
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('[Binge Background] Message received:', msg.type);
   if (msg.type === 'START_SCRAPING') {

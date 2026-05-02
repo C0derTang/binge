@@ -3,6 +3,21 @@ const router = express.Router();
 const supabase = require('../supabase');
 const matchingService = require('../services/matching');
 
+// Get compatibility between two users
+router.get('/compatibility', async (req, res) => {
+  const { userId1, userId2 } = req.query;
+
+  const { data: user1 } = await supabase.from('users').select('*').eq('user_id', userId1).single();
+  const { data: user2 } = await supabase.from('users').select('*').eq('user_id', userId2).single();
+
+  if (!user1 || !user2) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const score = matchingService.calculateCompatibility(user1, user2);
+  res.json({ score });
+});
+
 // Update user profile
 router.put('/profile', async (req, res) => {
   try {
@@ -93,21 +108,6 @@ router.get('/:userId/matches', async (req, res) => {
       compatibilityScore: m.compatibilityScore
     }))
   });
-});
-
-// Get compatibility between two users
-router.get('/compatibility', async (req, res) => {
-  const { userId1, userId2 } = req.query;
-
-  const { data: user1 } = await supabase.from('users').select('*').eq('user_id', userId1).single();
-  const { data: user2 } = await supabase.from('users').select('*').eq('user_id', userId2).single();
-
-  if (!user1 || !user2) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-
-  const score = matchingService.calculateCompatibility(user1, user2);
-  res.json({ score });
 });
 
 module.exports = router;

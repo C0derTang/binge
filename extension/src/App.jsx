@@ -16,16 +16,6 @@ export default function App() {
 
   async function init() {
     try {
-      // Check if we're on Instagram
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      const isInstagram = tab?.url?.includes('instagram.com');
-
-      if (!isInstagram) {
-        setView('not-instagram');
-        setLoading(false);
-        return;
-      }
-
       const stored = await chrome.storage.local.get(['user']);
       if (stored.user) {
         setUser(stored.user);
@@ -79,19 +69,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-binge-bg">
-      {view === 'not-instagram' && (
-        <div className="p-6 flex flex-col items-center justify-center h-screen text-center">
-          <h1
-            className="text-3xl font-bold mb-4"
-            style={{ background: 'linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-          >
-            Binge
-          </h1>
-          <p className="text-binge-dim text-sm">
-            Open Instagram to use Binge
-          </p>
-        </div>
-      )}
       {view === 'login' && (
         <LoginView
           onLogin={handleLogin}
