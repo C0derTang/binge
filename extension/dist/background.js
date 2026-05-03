@@ -90,7 +90,24 @@ async function storeReel(reel) {
     const data = await resp.json();
     if (data.success) {
       console.log('[Binge Background] Reel stored:', reel.code);
-      sendMessage({ type: 'SCRAPING_COMPLETE', interests: reel.hashtags, humorType: 'chill' });
+
+      // Run MiniMax AI analysis on the caption
+      let interests = reel.hashtags;
+      let humorType = 'chill';
+
+      try {
+        const resp = await fetch(`${API_URL}/analyze?caption=${encodeURIComponent(reel.caption)}`);
+        if (resp.ok) {
+          const result = await resp.json();
+          console.log('[Binge Background] AI analysis result:', JSON.stringify(result));
+          interests = result.interests || reel.hashtags;
+          humorType = result.humorType || 'chill';
+        }
+      } catch (err) {
+        console.error('[Binge Background] AI analysis failed:', err.message);
+      }
+
+      sendMessage({ type: 'SCRAPING_COMPLETE', interests, humorType });
     } else {
       console.log('[Binge Background] Store failed:', data.error);
       sendMessage({ type: 'SCRAPING_COMPLETE', interests: [], humorType: 'chill' });

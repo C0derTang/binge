@@ -6,7 +6,6 @@ export default function Dashboard({ user, onLogout, API_URL }) {
   const [status, setStatus] = useState({ text: 'Extension active', state: 'active' });
   const [profile, setProfile] = useState(user);
   const [matches, setMatches] = useState([]);
-  const [logs, setLogs] = useState([]);
 
   useEffect(() => {
     console.log('[Dashboard] Mounted, setting up listeners');
@@ -36,19 +35,11 @@ export default function Dashboard({ user, onLogout, API_URL }) {
     console.log('[Dashboard] Received message:', msg.type, msg);
     if (msg.type === 'SCRAPING_START') {
       setStatus({ text: 'Scraping reels...', state: 'scraping' });
-      addLog(`Started scraping ${msg.count} reels`);
     } else if (msg.type === 'SCRAPING_COMPLETE') {
       setStatus({ text: 'Extension active', state: 'active' });
-      addLog(`Found: ${msg.interests?.join(', ') || 'no new interests'}`);
-      // Reload interest scores and matches after new reel stored
       loadInterestScores();
       loadMatches(profile.userId);
     }
-  }
-
-  function addLog(message) {
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setLogs(prev => [{ time, message }, ...prev].slice(0, 5));
   }
 
   async function updateUser(newInterests, newHumorType, newProfilePicture) {
@@ -121,7 +112,11 @@ export default function Dashboard({ user, onLogout, API_URL }) {
     const res = await fetch(`${API_URL}/users/${userId}/matches`);
     const data = await res.json();
     console.log('[Dashboard] Matches loaded:', data.matches?.length || 0);
-    if (data.matches) setMatches(data.matches);
+    if (data.matches?.length > 0) {
+      setMatches(data.matches);
+    } else {
+      setMatches([]);
+    }
   }
 
   async function loadInterestScores() {
@@ -214,24 +209,7 @@ export default function Dashboard({ user, onLogout, API_URL }) {
           </div>
         </section>
 
-        <section>
-          <h2 className="text-binge-dim text-sm font-medium mb-2">Scraping Log</h2>
-          <div className="bg-binge-card rounded-lg p-3">
-            {logs.length === 0 ? (
-              <p className="text-binge-dim text-xs">No activity yet</p>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {logs.map((log, i) => (
-                  <div key={i} className="flex gap-2 text-xs">
-                    <span className="text-binge-dim">{log.time}</span>
-                    <span className="text-white">{log.message}</span>
-                  </div>
-                ))}
               </div>
-            )}
-          </div>
-        </section>
-      </div>
     </div>
   );
 }
