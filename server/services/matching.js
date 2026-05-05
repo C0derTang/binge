@@ -106,7 +106,7 @@ function calculateCompatibilityFromScores(myScores, myTotal, otherScores, otherT
     const myMagnitude = Math.sqrt(Object.values(myScores).reduce((a, b) => a + b * b, 0));
     const otherMagnitude = Math.sqrt(Object.values(otherScores).reduce((a, b) => a + b * b, 0));
     const cosineSimilarity = dotProduct / (myMagnitude * otherMagnitude);
-    score = cosineSimilarity * 60;
+    score = cosineSimilarity * 100;
   }
 
   // Humor type (unchanged - can add humor aggregation later)
